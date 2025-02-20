@@ -6,14 +6,11 @@ from tensorflow.keras.models import load_model
 
 app = Flask(__name__)
 
-# Load model
 model = load_model("drowsiness_lenet_model.h5")
 
-# Load OpenCV classifiers
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
 
-# Webcam setup
 cap = cv2.VideoCapture(0)
 
 closed_eye_counter = 0
