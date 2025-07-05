@@ -5,26 +5,22 @@ from tensorflow.keras.models import load_model
 import os
 
 def test_eye_detection():
-    """Test eye detection and show results in real-time"""
     
-    # Load model
     if os.path.exists("drowsiness_lenet_model.keras"):
         model = load_model("drowsiness_lenet_model.keras", compile=False)
-        print("✅ Model loaded from .keras format")
+        print("Model loaded from .keras format")
     else:
         model = load_model("drowsiness_lenet_model.h5", compile=False)
-        print("✅ Model loaded from .h5 format")
+        print("Model loaded from .h5 format")
     
-    # Load cascade classifiers
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
     
-    # Initialize camera
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         cap = cv2.VideoCapture(1)
     
-    print("\n=== Eye Detection Test ===")
+    print("\nEye Detection Test")
     print("Press 'q' to quit")
     print("Press 's' to save current frame")
     print("=" * 50)
@@ -40,10 +36,9 @@ def test_eye_detection():
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(50, 50))
         
-        # Clear console (optional - comment out if you want to see history)
-        if frame_count % 30 == 0:  # Clear every 30 frames (about 1 second)
+        if frame_count % 30 == 0:
             os.system('cls' if os.name == 'nt' else 'clear')
-            print("=== Eye Detection Test ===")
+            print("Eye Detection Test")
             print("Press 'q' to quit, 's' to save frame")
             print("=" * 50)
         
@@ -68,12 +63,10 @@ def test_eye_detection():
                         closed_prob = prediction[0][1]
                         label = "CLOSED" if np.argmax(prediction) == 1 else "OPEN"
                         
-                        # Determine left/right eye
                         eye_position = "LEFT" if ex < w//2 else "RIGHT"
                         
                         print(f"    {eye_position} Eye: {label} (Open: {open_prob:.3f}, Closed: {closed_prob:.3f})")
                         
-                        # Draw rectangle around eye
                         cv2.rectangle(frame, (x+ex, y+ey), (x+ex+ew, y+ey+eh), (0, 255, 0), 2)
                         cv2.putText(frame, f"{eye_position}: {label}", (x+ex, y+ey-10), 
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
@@ -82,12 +75,10 @@ def test_eye_detection():
                         print(f"    Error predicting eye {i+1}: {e}")
                         continue
                 
-                # Draw rectangle around face
                 cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
         else:
             print(f"Frame {frame_count}: No face detected")
         
-        # Display frame
         cv2.imshow('Eye Detection Test', frame)
         
         key = cv2.waitKey(1) & 0xFF

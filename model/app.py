@@ -4,102 +4,105 @@ import cv2
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import load_model
+import threading
+import time
 import os
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
-# Global variables
 model = None
 face_cascade = None
 eye_cascade = None
 cap = None
+is_monitoring = False
+alarm_active = False
+closed_eye_counter = 0
+threshold = 40
+monitoring_thread = None
 
 def load_model_safely():
-    """Load the model with proper error handling for version compatibility"""
-    global model
+    global model, face_cascade, eye_cascade
     try:
-        # Try loading the new .keras format first
         if os.path.exists("drowsiness_lenet_model.keras"):
             model = load_model("drowsiness_lenet_model.keras", compile=False)
-            print("Model loaded successfully from .keras format!")
-            return True
+            print("Model loaded from .keras format")
         else:
-            # Fall back to .h5 format
             model = load_model("drowsiness_lenet_model.h5", compile=False)
-            print("Model loaded successfully from .h5 format!")
-            return True
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        print("Attempting to recreate model...")
-        return create_model()
-
-def create_model():
-    """Create a new model if loading fails"""
-    global model
-    try:
-        from tensorflow.keras import layers, models
+            print("Model loaded from .h5 format")
         
-        model = models.Sequential([
-            layers.Conv2D(6, kernel_size=(5, 5), activation='relu', input_shape=(32, 32, 1)),
-            layers.AveragePooling2D(pool_size=(2, 2)),
-            layers.Conv2D(16, kernel_size=(5, 5), activation='relu'),
-            layers.AveragePooling2D(pool_size=(2, 2)),
-            layers.Flatten(),
-            layers.Dense(120, activation='relu'),
-            layers.Dense(84, activation='relu'),
-            layers.Dense(2, activation='softmax')
-        ])
-        
-        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-        print("New model created successfully!")
-        return True
-    except Exception as e:
-        print(f"Error creating model: {e}")
-        return False
-
-def initialize_cascades():
-    """Initialize face and eye cascade classifiers"""
-    global face_cascade, eye_cascade
-    try:
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
         eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
-        
-        if face_cascade.empty() or eye_cascade.empty():
-            print("Error: Could not load cascade classifiers")
-            return False
         return True
     except Exception as e:
-        print(f"Error loading cascade classifiers: {e}")
+        print(f"Error loading model: {e}")
         return False
 
-def initialize_camera():
-    """Initialize camera capture"""
+def init_camera():
     global cap
     try:
         cap = cv2.VideoCapture(0)
         if not cap.isOpened():
-            cap = cv2.VideoCapture(1)  # Try alternative camera
+            cap = cv2.VideoCapture(1)
         return cap.isOpened()
     except Exception as e:
-        print(f"Error initializing camera: {e}")
+        print(f"Camera error: {e}")
         return False
 
-# Initialize components
-if not load_model_safely():
-    print("Failed to load or create model")
-    exit(1)
+def monitor_drowsiness():
+    global closed_eye_counter, alarm_active, is_monitoring
+    
+    while is_monitoring:
+        try:
+            ret, frame = cap.read()
+            if not ret:
+                time.sleep(0.1)
+                continue
 
-if not initialize_cascades():
-    print("Failed to initialize cascade classifiers")
-    exit(1)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(50, 50))
 
-if not initialize_camera():
-    print("Failed to initialize camera")
-    exit(1)
+            drowsy = False
+            eyes_detected = False
 
-closed_eye_counter = 0
-threshold = 40
+            for (x, y, w, h) in faces:
+                face_roi = gray[y:y+h, x:x+w]
+                eyes = eye_cascade.detectMultiScale(face_roi, scaleFactor=1.1, minNeighbors=10, minSize=(20, 20))
+
+                for (ex, ey, ew, eh) in eyes:
+                    eyes_detected = True
+                    eye_roi = face_roi[ey:ey+eh, ex:ex+ew]
+                    eye_roi = cv2.resize(eye_roi, (32, 32))
+                    eye_roi = eye_roi / 255.0
+                    eye_roi = eye_roi.reshape(1, 32, 32, 1)
+
+                    try:
+                        prediction = model.predict(eye_roi, verbose=0)
+                        label = "Closed" if np.argmax(prediction) == 1 else "Open"
+
+                        if label == "Closed":
+                            closed_eye_counter += 1
+                        else:
+                            closed_eye_counter = 0
+
+                        if closed_eye_counter >= threshold:
+                            drowsy = True
+                            if not alarm_active:
+                                alarm_active = True
+                                print("DROWSINESS ALERT!")
+                    except Exception as e:
+                        continue
+
+            if not eyes_detected:
+                closed_eye_counter = 0
+
+            if not drowsy and alarm_active:
+                alarm_active = False
+
+            time.sleep(0.1)
+
+        except Exception as e:
+            time.sleep(0.1)
 
 @app.route('/status', methods=['GET'])
 def check_drowsiness():
@@ -119,9 +122,7 @@ def check_drowsiness():
         face_roi = gray[y:y+h, x:x+w]
         eyes = eye_cascade.detectMultiScale(face_roi, scaleFactor=1.1, minNeighbors=10, minSize=(20, 20))
 
-        print(f"\n=== Face Detected ===")
-        print(f"Face position: x={x}, y={y}, w={w}, h={h}")
-        print(f"Eyes detected: {len(eyes)}")
+        print(f"Face detected - Eyes: {len(eyes)}")
 
         for i, (ex, ey, ew, eh) in enumerate(eyes):
             eye_roi = face_roi[ey:ey+eh, ex:ex+ew]
@@ -135,14 +136,9 @@ def check_drowsiness():
                 closed_prob = prediction[0][1]
                 label = "Closed" if np.argmax(prediction) == 1 else "Open"
                 
-                # Determine if it's left or right eye based on position
                 eye_position = "Left" if ex < w//2 else "Right"
                 
-                print(f"\n--- {eye_position} Eye {i+1} ---")
-                print(f"Position: x={ex}, y={ey}, w={ew}, h={eh}")
-                print(f"Open probability: {open_prob:.4f}")
-                print(f"Closed probability: {closed_prob:.4f}")
-                print(f"Classification: {label}")
+                print(f"{eye_position} Eye: {label} (Open: {open_prob:.3f}, Closed: {closed_prob:.3f})")
                 
                 eye_detections.append({
                     "position": eye_position,
@@ -160,19 +156,9 @@ def check_drowsiness():
                     drowsy = True
                     
             except Exception as e:
-                print(f"Error in prediction: {e}")
                 continue
 
-    print(f"\n=== Summary ===")
-    print(f"Closed eye counter: {closed_eye_counter}/{threshold}")
-    print(f"Drowsy: {drowsy}")
-    print(f"Eye detections: {len(eye_detections)}")
-    
-    if eye_detections:
-        for eye in eye_detections:
-            print(f"  {eye['position']} Eye: {eye['label']} (Open: {eye['open_prob']:.3f}, Closed: {eye['closed_prob']:.3f})")
-    
-    print("=" * 50)
+    print(f"Counter: {closed_eye_counter}/{threshold}, Drowsy: {drowsy}")
 
     return jsonify({
         "drowsy": drowsy,
@@ -181,18 +167,48 @@ def check_drowsiness():
         "eye_detections": eye_detections
     })
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        "status": "healthy",
-        "model_loaded": model is not None,
-        "camera_available": cap is not None and cap.isOpened()
-    })
+@app.route('/start_monitoring', methods=['POST'])
+def start_monitoring():
+    global is_monitoring, monitoring_thread
+    
+    if not load_model_safely():
+        return jsonify({"error": "Failed to initialize model"}), 500
+    
+    if not init_camera():
+        return jsonify({"error": "Failed to initialize camera"}), 500
+    
+    if not is_monitoring:
+        is_monitoring = True
+        monitoring_thread = threading.Thread(target=monitor_drowsiness)
+        monitoring_thread.daemon = True
+        monitoring_thread.start()
+        return jsonify({"message": "Monitoring started"})
+    
+    return jsonify({"message": "Already monitoring"})
+
+@app.route('/stop_monitoring', methods=['POST'])
+def stop_monitoring():
+    global is_monitoring, alarm_active, closed_eye_counter
+    
+    is_monitoring = False
+    alarm_active = False
+    closed_eye_counter = 0
+    
+    if cap and cap.isOpened():
+        cap.release()
+    
+    return jsonify({"message": "Monitoring stopped"})
+
+@app.route('/stop_alarm', methods=['POST'])
+def stop_alarm():
+    global alarm_active, closed_eye_counter
+    
+    alarm_active = False
+    closed_eye_counter = 0
+    
+    return jsonify({"message": "Alarm stopped"})
 
 if __name__ == '__main__':
-    print("Starting Flask server...")
-    print("Server will be available at: http://localhost:5000")
-    print("Health check: http://localhost:5000/health")
+    print("Starting server...")
     app.run(host='0.0.0.0', port=5000, debug=True)
     

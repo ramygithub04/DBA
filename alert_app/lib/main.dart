@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-// import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
@@ -29,27 +28,17 @@ class DrowsinessDetectionScreen extends StatefulWidget {
 }
 
 class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
-  // final AudioPlayer audioPlayer = AudioPlayer();
   bool isAlarmPlaying = false;
   bool isMonitoring = false;
   bool isDrowsy = false;
   String statusMessage = "Not Monitoring";
   Timer? _timer;
-  String serverUrl = "http://192.168.70.240:5000"; // Your computer's IP address
+  String serverUrl = "http://192.168.70.240:5000";
 
   @override
   void initState() {
     super.initState();
-    // _initializeAudio();
   }
-
-  // void _initializeAudio() async {
-  //   try {
-  //     await audioPlayer.setSource(AssetSource('alarm.mp3'));
-  //   } catch (e) {
-  //     print('Error loading audio: $e');
-  //   }
-  // }
 
   void _startMonitoring() {
     setState(() {
@@ -57,7 +46,6 @@ class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
       statusMessage = "Monitoring...";
     });
 
-    // Poll the server every 500ms
     _timer = Timer.periodic(Duration(milliseconds: 500), (timer) {
       _checkDrowsiness();
     });
@@ -114,7 +102,6 @@ class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
 
   void _playAlarm() async {
     try {
-      // await audioPlayer.play(AssetSource('alarm.mp3'));
       setState(() {
         isAlarmPlaying = true;
       });
@@ -126,7 +113,6 @@ class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
 
   void _stopAlarm() async {
     try {
-      // await audioPlayer.stop();
       setState(() {
         isAlarmPlaying = false;
       });
@@ -138,7 +124,6 @@ class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
   @override
   void dispose() {
     _timer?.cancel();
-    // audioPlayer.dispose();
     super.dispose();
   }
 
@@ -163,7 +148,6 @@ class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Status Icon
               Container(
                 width: 200,
                 height: 200,
@@ -186,10 +170,7 @@ class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
                   color: Colors.white,
                 ),
               ),
-
               SizedBox(height: 40),
-
-              // Status Text
               Text(
                 statusMessage,
                 style: TextStyle(
@@ -199,10 +180,7 @@ class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-
               SizedBox(height: 20),
-
-              // Monitoring Status
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 decoration: BoxDecoration(
@@ -217,10 +195,7 @@ class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
                   ),
                 ),
               ),
-
               SizedBox(height: 40),
-
-              // Control Buttons
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -256,10 +231,7 @@ class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
                   ),
                 ],
               ),
-
               SizedBox(height: 20),
-
-              // Manual Alarm Stop Button
               if (isAlarmPlaying)
                 ElevatedButton(
                   onPressed: _stopAlarm,
@@ -275,10 +247,7 @@ class _DrowsinessDetectionScreenState extends State<DrowsinessDetectionScreen> {
                     style: TextStyle(fontSize: 16, color: Colors.white),
                   ),
                 ),
-
               SizedBox(height: 40),
-
-              // Instructions
               Container(
                 padding: EdgeInsets.all(20),
                 margin: EdgeInsets.symmetric(horizontal: 20),
